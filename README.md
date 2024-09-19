@@ -256,5 +256,3 @@ This should look like the example below:
 After the submission date the lecturers will run the automated competition offline - the results of the competition will be presented in class with the top 10 agents and their performance being shown.
 
 If the automated system fails to run your code for any reason - it will be disqualified from placing. It is the students onus to make sure they follow the instructions properly to give them a chance at their agent placing in the competition. 
-#   p o k e m o n _ a g e n t  
- 
