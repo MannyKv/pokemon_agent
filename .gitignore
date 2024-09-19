@@ -1,0 +1,21 @@
+__pycache__/
+venv/
+# Default ignored files
+/shelf/
+/workspace.xml
+# Editor-based HTTP Client requests
+/httpRequests/
+# Datasource local storage ignored files
+/dataSources/
+/dataSources.local.xml
+build/
+pyboy_environment.egg-info/
+dist/
+.idea/
+.DS_Store
+rl_logs/
+
+roms/
+results/
+
+*client_secrets.json
