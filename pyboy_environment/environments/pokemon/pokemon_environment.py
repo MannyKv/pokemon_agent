@@ -227,23 +227,23 @@ class PokemonEnvironment(PyboyEnvironment):
 
     def _get_screen_background_tilemap(self):
         ### SIMILAR TO CURRENT pyboy.game_wrapper()._game_area_np(), BUT ONLY FOR BACKGROUND TILEMAP, SO NPC ARE SKIPPED
-        bsm = self.pyboy.botsupport_manager()
-        ((scx, scy), (wx, wy)) = bsm.screen().tilemap_position()
-        tilemap = np.array(bsm.tilemap_background()[:, :])
+       # bsm = self.pyboy.botsupport_manager()
+        ((scx, scy), (wx, wy)) = self.pyboy.screen.get_tilemap_position()
+        tilemap = np.array(self.pyboy.tilemap_background[:, :])
         return np.roll(np.roll(tilemap, -scy // 8, axis=0), -scx // 8, axis=1)[:18, :20]
 
     def _get_screen_walkable_matrix(self):
         walkable_tiles_indexes = []
-        collision_ptr = self.pyboy.get_memory_value(0xD530) + (
-            self.pyboy.get_memory_value(0xD531) << 8
+        collision_ptr = self.pyboy.memory[0xD530] + (
+            self.pyboy.memory[0xD531] << 8
         )
-        tileset_type = self.pyboy.get_memory_value(0xFFD7)
+        tileset_type = self.pyboy.memory[0xFFD7]
         if tileset_type > 0:
-            grass_tile_index = self.pyboy.get_memory_value(0xD535)
+            grass_tile_index = self.pyboy.memory[0xD535]
             if grass_tile_index != 0xFF:
                 walkable_tiles_indexes.append(grass_tile_index + 0x100)
         for i in range(0x180):
-            tile_index = self.pyboy.get_memory_value(collision_ptr + i)
+            tile_index = self.pyboy.memory[collision_ptr + i]
             if tile_index == 0xFF:
                 break
             else:
