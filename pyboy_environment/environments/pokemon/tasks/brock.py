@@ -86,7 +86,8 @@ class PokemonBrock(PokemonEnvironment):
             game_stats["location"]["map_id"],
             len(game_stats["pokemon"]),
             sum(game_stats["levels"]),
-            #game_stats["seen_pokemon"],
+
+            # game_stats["seen_pokemon"],
             # game_stats["caught_pokemon"],
             # sum(game_stats["xp"]),
             # self.read_hp_as_a_fraction(),
@@ -160,9 +161,25 @@ class PokemonBrock(PokemonEnvironment):
 
         return current_hp / max_hp
 
+    enemy_hp = 0
+
+    def update_enemy_hp(self) -> None:
+        enemy_hp = self._read_m(0xCFE7)
+        self.enemy_hp = enemy_hp
+
+    def battle_reward(self):
+        old_hp = self.enemy_hp
+        self.update_enemy_hp()
+        if self.enemy_hp < old_hp:
+            return 1
+        return 0
+
+
     def _calculate_reward(self, new_state: dict) -> float:
         # Implement your reward calculation logic here
         temp_reward = 0
+
+        battle_active = (self._read_m(0xD057) != 0x00)
 
         # check if new coordinate and reward.
         location = new_state.get("location")
@@ -179,9 +196,11 @@ class PokemonBrock(PokemonEnvironment):
 
         temp_reward += self.penalty_walls()
 
+        if battle_active:
+            temp_reward += self.battle_reward()
+
         if self._is_grass_tile():
             temp_reward += 7
-
 
         return temp_reward
 
@@ -191,8 +210,6 @@ class PokemonBrock(PokemonEnvironment):
 
         if key not in self.seen:
             self.seen.append(key)
-
-        print(f"{location}")
 
         if location["map_id"] not in self.visited_coords:
             self.visited_coords.append(location["map_id"])
