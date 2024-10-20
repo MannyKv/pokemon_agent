@@ -49,8 +49,8 @@ class PokemonBrock(PokemonEnvironment):
 
     # store the visited coordinates.
     visited_coords = []
-    # dictionary_visitations = {}
-    #same_location_counter = 0
+    seen = []
+    # same_location_counter = 0
     action = -1
     left_wall = -1
     right_wall = -1
@@ -86,9 +86,12 @@ class PokemonBrock(PokemonEnvironment):
             game_stats["location"]["map_id"],
             len(game_stats["pokemon"]),
             sum(game_stats["levels"]),
+            #game_stats["seen_pokemon"],
             # game_stats["caught_pokemon"],
-            #sum(game_stats["xp"]),
-            #self.read_hp_as_a_fraction(),
+            # sum(game_stats["xp"]),
+            # self.read_hp_as_a_fraction(),
+            # len(self.seen),
+            # len(self.visited_coords),
             self.action,
             # obstacles?
             self.top_wall,
@@ -169,7 +172,7 @@ class PokemonBrock(PokemonEnvironment):
         temp_reward += self._caught_reward(new_state) * 4
 
         # print(f"seen: {self._read_seen_pokemon_count()}")
-        # temp_reward += self._seen_reward(new_state) * 3
+        temp_reward += self._seen_reward(new_state) * 3
 
         # give a reward for battles indicated by pokemon level up
         temp_reward += self._levels_reward(new_state) * 5
@@ -177,27 +180,32 @@ class PokemonBrock(PokemonEnvironment):
         temp_reward += self.penalty_walls()
 
         if self._is_grass_tile():
-            temp_reward += 10
+            temp_reward += 7
+
 
         return temp_reward
+
     def exploration_reward(self, location):
         key = f"{location}"
         reward = 0
 
-        # if key not in self.dictionary_visitations:
-        #     self.dictionary_visitations[key] = 1
-        #     reward+=1
+        if key not in self.seen:
+            self.seen.append(key)
+
+        print(f"{location}")
 
         if location["map_id"] not in self.visited_coords:
             self.visited_coords.append(location["map_id"])
             bruh = location["map_id"]
             print(f"new location!: {bruh}")
-            if(bruh != 40):
+            if (bruh != 40):
                 return 100
 
         if self.prior_game_stats["location"]["x"] != location["x"] or self.prior_game_stats["location"]["y"] != \
                 location["y"]:
             reward += -1
+        if self.prior_game_stats["location"]["y"] > location["y"]:
+            reward += 1.5
         return reward
 
     def _check_if_done(self, game_stats: dict[str, any]) -> bool:
@@ -206,10 +214,9 @@ class PokemonBrock(PokemonEnvironment):
 
     def _check_if_truncated(self, game_stats: dict) -> bool:
         # Implement your truncation check logic here
-        if self.steps >= 1000:
+        if self.steps >= 5000:
             self.visited_coords.clear()
-            #self.dictionary_visitations.clear()
+            self.seen.clear()
             self.action = -1
-            #self.same_location_counter = 0
             return True
         return False
