@@ -49,26 +49,113 @@ class PokemonBrock(PokemonEnvironment):
 
     # store the visited coordinates.
     visited_coords = []
-    dictionary_visitations = {}
-    same_location_counter = 0
+    # dictionary_visitations = {}
+    #same_location_counter = 0
+    action = -1
+    left_wall = -1
+    right_wall = -1
+    top_wall = -1
+    bottom_wall = -1
+
+    def _run_action_on_emulator(self, action_array):
+        action = action_array[0]
+        action = min(action, 0.99)
+
+        # Continuous Action is a float between 0 - 1 from Value based methods
+        # We need to convert this to an action that the emulator can understand
+        bins = np.linspace(0, 1, len(self.valid_actions) + 1)
+        button = np.digitize(action, bins) - 1
+        self.action = button
+
+        # Push the button for a few frames
+        self.pyboy.send_input(self.valid_actions[button])
+
+        for _ in range(self.act_freq):
+            self.pyboy.tick()
+
+        # Release the button
+        self.pyboy.send_input(self.release_button[button])
 
     def _get_state(self) -> np.ndarray:
         # Implement your state retrieval logic here
         game_stats = self._generate_game_stats()
-        isBattle = self._read_m(0xD057) != 0x00
+        self.get_wall_status()
         state_vector = [
             game_stats["location"]["x"],
             game_stats["location"]["y"],
             game_stats["location"]["map_id"],
+            len(game_stats["pokemon"]),
+            sum(game_stats["levels"]),
             # game_stats["caught_pokemon"],
-            # game_stats["seen_pokemon"]
-            # game_stats["party_size"],
-            # sum(game_stats["hp"]["current"]),  # total HP
-            # game_stats["badges"],
-            # game_stats["money"],
+            #sum(game_stats["xp"]),
+            #self.read_hp_as_a_fraction(),
+            self.action,
+            # obstacles?
+            self.top_wall,
+            self.bottom_wall,
+            self.right_wall,
+            self.left_wall
         ]
 
         return np.array(state_vector)
+
+    def get_wall_status(self):
+        map_data = self._get_screen_walkable_matrix()
+        # Initialize direction flags
+        walkable_left = 0
+        walkable_right = 0
+        walkable_up = 0
+        walkable_down = 0
+        player_x = 4
+        player_y = 4
+
+        # Check if the tile to the left is walkable
+        if player_x > 0 and map_data[player_y][player_x - 1] == 1:
+            walkable_left = 1
+
+        # Check if the tile to the right is walkable
+        if player_x < len(map_data[0]) - 1 and map_data[player_y][player_x + 1] == 1:
+            walkable_right = 1
+
+        # Check if the tile above is walkable
+        if player_y > 0 and map_data[player_y - 1][player_x] == 1:
+            walkable_up = 1
+
+        # Check if the tile below is walkable
+        if player_y < len(map_data) - 1 and map_data[player_y + 1][player_x] == 1:
+            walkable_down = 1
+
+        self.left_wall = walkable_left
+        self.right_wall = walkable_right
+        self.bottom_wall = walkable_down
+        self.top_wall = walkable_up
+
+    def penalty_walls(self):
+        battle = (self._read_m(0xD057) != 0x00)
+        penalty = 0
+        if battle:
+            return 0
+        else:
+            if self.left_wall == 0:
+                penalty += -0.01
+            if self.right_wall == 0:
+                penalty += -0.01
+            if self.top_wall == 0:
+                penalty += -0.01
+            if self.bottom_wall == 0:
+                penalty += -0.01
+        return penalty
+
+    def read_hp_as_a_fraction(self) -> float:
+        current_and_max_hp = self._read_party_hp()
+        current_hp, max_hp = current_and_max_hp["current"], current_and_max_hp["max"]
+
+        current_hp = sum(current_hp)
+        max_hp = sum(max_hp)
+        # make sure we don't divide by 0
+        max_hp = max(max_hp, 1)
+
+        return current_hp / max_hp
 
     def _calculate_reward(self, new_state: dict) -> float:
         # Implement your reward calculation logic here
@@ -78,58 +165,40 @@ class PokemonBrock(PokemonEnvironment):
         location = new_state.get("location")
         temp_reward += self.exploration_reward(location)
         # check to ensure bro is not revisiting same spots
-       # temp_reward += self.overworld_movement_reward(new_state)
         # give a reward for if a pokemon is caught
-        temp_reward += self._caught_reward(new_state) * 100
+        temp_reward += self._caught_reward(new_state) * 4
 
-        temp_reward += self._seen_reward(new_state)
+        # print(f"seen: {self._read_seen_pokemon_count()}")
+        # temp_reward += self._seen_reward(new_state) * 3
 
-        temp_reward += self._using_the_right_move_in_battle_reward()
         # give a reward for battles indicated by pokemon level up
-        temp_reward += self._levels_reward(new_state) * 100
+        temp_reward += self._levels_reward(new_state) * 5
 
-        # check collision
-        # temp_reward+=self.check_if_collided(self._get_screen_walkable_matrix())
+        temp_reward += self.penalty_walls()
+
+        if self._is_grass_tile():
+            temp_reward += 10
 
         return temp_reward
-
-    def _using_the_right_move_in_battle_reward(self) -> int:
+    def exploration_reward(self, location):
+        key = f"{location}"
         reward = 0
 
-        # check if the agent is in battle
-        battle = (self._read_m(0xD057) != 0x00)
+        # if key not in self.dictionary_visitations:
+        #     self.dictionary_visitations[key] = 1
+        #     reward+=1
 
-        if battle:
-            return 5
-        return 0
-
-
-    def exploration_reward(self, location):
-        battle = (self._read_m(0xD057) != 0x00)
         if location["map_id"] not in self.visited_coords:
             self.visited_coords.append(location["map_id"])
-            return 10
+            bruh = location["map_id"]
+            print(f"new location!: {bruh}")
+            if(bruh != 40):
+                return 100
 
-        if self.prior_game_stats["location"]["x"] != location["x"] or self.prior_game_stats["location"]["y"] != location["y"]:
-            return 1
-        elif not battle:
-            return -0.01
-        else:
-            return 0
-
-
-        # final_reward = 0
-        # # Reward for visiting new (x, y) coordinates in a familiar map
-        # if location not in self.visited_coords:
-        #     final_reward += 1 * (1/self.steps)  # Increase reward for new areas
-        #     self.visited_coords.append(location)
-        #     if self.prior_game_stats["location"]["map_id"] != location["map_id"]:
-        #         self.same_location_counter = 0
-        # else:
-        #     self.same_location_counter += 1
-        #     index = self.visited_coords.index(location)
-        #     final_reward -= 0.01 * (len(self.visited_coords) - index) # * by how long ago it was seen for more painful rewrds
-        return 0
+        if self.prior_game_stats["location"]["x"] != location["x"] or self.prior_game_stats["location"]["y"] != \
+                location["y"]:
+            reward += -1
+        return reward
 
     def _check_if_done(self, game_stats: dict[str, any]) -> bool:
         # Setting done to true if agent beats first gym (temporary)
@@ -137,8 +206,10 @@ class PokemonBrock(PokemonEnvironment):
 
     def _check_if_truncated(self, game_stats: dict) -> bool:
         # Implement your truncation check logic here
-        if self.same_location_counter > 4000:
-            self.same_location_counter = 0
+        if self.steps >= 1000:
+            self.visited_coords.clear()
+            #self.dictionary_visitations.clear()
+            self.action = -1
+            #self.same_location_counter = 0
             return True
-        # Maybe if we run out of pokeballs...? or a max step count
-        return self.steps >= 1000
+        return False
