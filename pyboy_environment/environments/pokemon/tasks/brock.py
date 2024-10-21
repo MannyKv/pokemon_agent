@@ -80,13 +80,14 @@ class PokemonBrock(PokemonEnvironment):
         # Implement your state retrieval logic here
         game_stats = self._generate_game_stats()
         self.get_wall_status()
+        # is_grass = self._is_grass_tile()
+        # battle = (self._read_m(0xD057) != 0x00)
         state_vector = [
             game_stats["location"]["x"],
             game_stats["location"]["y"],
             game_stats["location"]["map_id"],
             len(game_stats["pokemon"]),
             sum(game_stats["levels"]),
-
             # game_stats["seen_pokemon"],
             # game_stats["caught_pokemon"],
             # sum(game_stats["xp"]),
@@ -171,7 +172,8 @@ class PokemonBrock(PokemonEnvironment):
         old_hp = self.enemy_hp
         self.update_enemy_hp()
         if self.enemy_hp < old_hp:
-            return 1
+            print("TO BATTLE WE GO RAHHHHHHHHH")
+            return 50
         return 0
 
 
@@ -198,6 +200,8 @@ class PokemonBrock(PokemonEnvironment):
 
         if battle_active:
             temp_reward += self.battle_reward()
+        else:
+            self.enemy_hp = -1
 
         if self._is_grass_tile():
             temp_reward += 7
@@ -222,7 +226,7 @@ class PokemonBrock(PokemonEnvironment):
                 location["y"]:
             reward += -1
         if self.prior_game_stats["location"]["y"] > location["y"]:
-            reward += 1.5
+            reward += 2
         return reward
 
     def _check_if_done(self, game_stats: dict[str, any]) -> bool:
@@ -231,9 +235,10 @@ class PokemonBrock(PokemonEnvironment):
 
     def _check_if_truncated(self, game_stats: dict) -> bool:
         # Implement your truncation check logic here
-        if self.steps >= 5000:
+        if self.steps >= 2500:
             self.visited_coords.clear()
             self.seen.clear()
+            self.enemy_hp=-1
             self.action = -1
             return True
         return False
