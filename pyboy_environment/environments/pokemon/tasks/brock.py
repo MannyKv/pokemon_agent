@@ -80,14 +80,17 @@ class PokemonBrock(PokemonEnvironment):
         # Implement your state retrieval logic here
         game_stats = self._generate_game_stats()
         self.get_wall_status()
-        # is_grass = self._is_grass_tile()
-        # battle = (self._read_m(0xD057) != 0x00)
+        is_grass = self._is_grass_tile()
+        battle = (self._read_m(0xD057) != 0x00)
         state_vector = [
             game_stats["location"]["x"],
             game_stats["location"]["y"],
             game_stats["location"]["map_id"],
-            len(game_stats["pokemon"]),
-            sum(game_stats["levels"]),
+            # len(game_stats["pokemon"]),
+            # sum(game_stats["levels"]),
+            is_grass,
+            battle,
+            #self.enemy_hp,
             # game_stats["seen_pokemon"],
             # game_stats["caught_pokemon"],
             # sum(game_stats["xp"]),
@@ -162,7 +165,7 @@ class PokemonBrock(PokemonEnvironment):
 
         return current_hp / max_hp
 
-    enemy_hp = 0
+    enemy_hp = -1
 
     def update_enemy_hp(self) -> None:
         enemy_hp = self._read_m(0xCFE7)
@@ -173,19 +176,18 @@ class PokemonBrock(PokemonEnvironment):
         self.update_enemy_hp()
         if self.enemy_hp < old_hp:
             print("TO BATTLE WE GO RAHHHHHHHHH")
-            return 50
+            return 100
         return 0
-
 
     def _calculate_reward(self, new_state: dict) -> float:
         # Implement your reward calculation logic here
         temp_reward = 0
-
+        temp_reward += -2
         battle_active = (self._read_m(0xD057) != 0x00)
 
         # check if new coordinate and reward.
         location = new_state.get("location")
-        temp_reward += self.exploration_reward(location)
+        temp_reward += self.exploration_reward(location,battle_active)
         # check to ensure bro is not revisiting same spots
         # give a reward for if a pokemon is caught
         temp_reward += self._caught_reward(new_state) * 4
@@ -199,34 +201,41 @@ class PokemonBrock(PokemonEnvironment):
         temp_reward += self.penalty_walls()
 
         if battle_active:
+            #temp_reward += 2
             temp_reward += self.battle_reward()
         else:
             self.enemy_hp = -1
 
         if self._is_grass_tile():
-            temp_reward += 7
+            temp_reward += 10
 
         return temp_reward
 
-    def exploration_reward(self, location):
+    def exploration_reward(self, location, is_battle):
         key = f"{location}"
         reward = 0
 
         if key not in self.seen:
             self.seen.append(key)
+        elif key in self.seen and not self._is_grass_tile() and not is_battle:
+            return -1
+        elif key in self.seen and self._is_grass_tile() and not is_battle:
+            return -7
 
         if location["map_id"] not in self.visited_coords:
             self.visited_coords.append(location["map_id"])
             bruh = location["map_id"]
             print(f"new location!: {bruh}")
+            if bruh == 12:
+                return 500
             if (bruh != 40):
                 return 100
 
-        if self.prior_game_stats["location"]["x"] != location["x"] or self.prior_game_stats["location"]["y"] != \
-                location["y"]:
-            reward += -1
+        # if self.prior_game_stats["location"]["x"] != location["x"] or self.prior_game_stats["location"]["y"] != \
+        #         location["y"]:
+        #     reward += -1
         if self.prior_game_stats["location"]["y"] > location["y"]:
-            reward += 2
+            reward += 3
         return reward
 
     def _check_if_done(self, game_stats: dict[str, any]) -> bool:
@@ -235,10 +244,10 @@ class PokemonBrock(PokemonEnvironment):
 
     def _check_if_truncated(self, game_stats: dict) -> bool:
         # Implement your truncation check logic here
-        if self.steps >= 2500:
+        if self.steps >= 2000:
             self.visited_coords.clear()
             self.seen.clear()
-            self.enemy_hp=-1
+            self.enemy_hp = -1
             self.action = -1
             return True
         return False
