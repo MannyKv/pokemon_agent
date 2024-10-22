@@ -82,28 +82,52 @@ class PokemonBrock(PokemonEnvironment):
         self.get_wall_status()
         is_grass = self._is_grass_tile()
         battle = (self._read_m(0xD057) != 0x00)
-        state_vector = [
-            game_stats["location"]["x"],
-            game_stats["location"]["y"],
-            game_stats["location"]["map_id"],
-            # len(game_stats["pokemon"]),
-            # sum(game_stats["levels"]),
-            is_grass,
-            battle,
-            #self.enemy_hp,
-            # game_stats["seen_pokemon"],
-            # game_stats["caught_pokemon"],
-            # sum(game_stats["xp"]),
-            # self.read_hp_as_a_fraction(),
-            # len(self.seen),
-            # len(self.visited_coords),
-            self.action,
-            # obstacles?
-            self.top_wall,
-            self.bottom_wall,
-            self.right_wall,
-            self.left_wall
-        ]
+        if battle: # logic being that when in battle the state vector should not matter, we want it to do a set action
+            state_vector = [
+                -1,
+                -1,
+                -1,
+                battle,
+                is_grass,
+                sum(game_stats["levels"]),
+                self.enemy_hp,
+                # game_stats["seen_pokemon"],
+                # game_stats["caught_pokemon"],
+                # sum(game_stats["xp"]),
+                # self.read_hp_as_a_fraction(),
+                # len(self.seen),
+                # len(self.visited_coords),
+                self.action,
+
+                # obstacles?
+                -1,
+                -1,
+                -1,
+                -1,
+            ]
+        else: # traversing
+            state_vector = [
+                game_stats["location"]["x"],
+                game_stats["location"]["y"],
+                game_stats["location"]["map_id"],
+                -1,
+                -1,
+                sum(game_stats["levels"]),
+                -1,
+                # game_stats["seen_pokemon"],
+                # game_stats["caught_pokemon"],
+                # sum(game_stats["xp"]),
+                # self.read_hp_as_a_fraction(),
+                # len(self.seen),
+                # len(self.visited_coords),
+                self.action,
+
+                # obstacles?
+                self.top_wall,
+                self.bottom_wall,
+                self.right_wall,
+                self.left_wall
+            ]
 
         return np.array(state_vector)
 
@@ -165,7 +189,7 @@ class PokemonBrock(PokemonEnvironment):
 
         return current_hp / max_hp
 
-    enemy_hp = -1
+    enemy_hp = 0
 
     def update_enemy_hp(self) -> None:
         enemy_hp = self._read_m(0xCFE7)
@@ -175,67 +199,61 @@ class PokemonBrock(PokemonEnvironment):
         old_hp = self.enemy_hp
         self.update_enemy_hp()
         if self.enemy_hp < old_hp:
-            print("TO BATTLE WE GO RAHHHHHHHHH")
-            return 100
+            print(f"TO BATTLE WE GO RAHHHHHHHHH: {old_hp} - {self.enemy_hp} * 50 = {(old_hp - self.enemy_hp) * 50}")
+            return (old_hp - self.enemy_hp) * 50
+        return 0
+
+    def has_won(self, new_state):
+        if sum(new_state["levels"]) > sum(self.prior_game_stats["levels"]):
+            return 100 * (sum(new_state["levels"]) - sum(self.prior_game_stats["levels"]))
         return 0
 
     def _calculate_reward(self, new_state: dict) -> float:
         # Implement your reward calculation logic here
         temp_reward = 0
-        temp_reward += -2
         battle_active = (self._read_m(0xD057) != 0x00)
 
         # check if new coordinate and reward.
         location = new_state.get("location")
-        temp_reward += self.exploration_reward(location,battle_active)
+        temp_reward += self.exploration_reward(location)
         # check to ensure bro is not revisiting same spots
-        # give a reward for if a pokemon is caught
-        temp_reward += self._caught_reward(new_state) * 4
-
         # print(f"seen: {self._read_seen_pokemon_count()}")
-        temp_reward += self._seen_reward(new_state) * 3
-
-        # give a reward for battles indicated by pokemon level up
-        temp_reward += self._levels_reward(new_state) * 5
 
         temp_reward += self.penalty_walls()
 
         if battle_active:
-            #temp_reward += 2
             temp_reward += self.battle_reward()
         else:
             self.enemy_hp = -1
-
+        temp_reward+=self.has_won(new_state)
         if self._is_grass_tile():
-            temp_reward += 10
+            temp_reward += 7
 
         return temp_reward
 
-    def exploration_reward(self, location, is_battle):
+    def exploration_reward(self, location):
         key = f"{location}"
         reward = 0
 
         if key not in self.seen:
             self.seen.append(key)
-        elif key in self.seen and not self._is_grass_tile() and not is_battle:
-            return -1
-        elif key in self.seen and self._is_grass_tile() and not is_battle:
-            return -7
+
 
         if location["map_id"] not in self.visited_coords:
             self.visited_coords.append(location["map_id"])
             bruh = location["map_id"]
             print(f"new location!: {bruh}")
-            if bruh == 12:
-                return 500
             if (bruh != 40):
                 return 100
 
-        # if self.prior_game_stats["location"]["x"] != location["x"] or self.prior_game_stats["location"]["y"] != \
-        #         location["y"]:
-        #     reward += -1
+        # if self.prior_game_stats["location"]["x"] != location["x"] and self.prior_game_stats["location"]["y"] != location["y"]:
+        #     reward+=0.5
+
+        if self.prior_game_stats["location"]["x"] != location["x"] or self.prior_game_stats["location"]["y"] != \
+                location["y"]:
+            reward -= 1
         if self.prior_game_stats["location"]["y"] > location["y"]:
-            reward += 3
+            reward += 2
         return reward
 
     def _check_if_done(self, game_stats: dict[str, any]) -> bool:
@@ -244,10 +262,10 @@ class PokemonBrock(PokemonEnvironment):
 
     def _check_if_truncated(self, game_stats: dict) -> bool:
         # Implement your truncation check logic here
-        if self.steps >= 2000:
+        if self.steps >= 1000:
             self.visited_coords.clear()
             self.seen.clear()
-            self.enemy_hp = -1
+            self.enemy_hp=-1
             self.action = -1
             return True
         return False
