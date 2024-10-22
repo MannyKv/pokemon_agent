@@ -83,7 +83,7 @@ class PokemonBrock(PokemonEnvironment):
         is_grass = self._is_grass_tile()
         battle = (self._read_m(0xD057) != 0x00)
 
-        #======================================Left Over=====================================
+        # ======================================Left Over=====================================
         # game_stats["seen_pokemon"],
         # game_stats["caught_pokemon"],
         # sum(game_stats["xp"]),
@@ -189,6 +189,7 @@ class PokemonBrock(PokemonEnvironment):
         max_hp = max(max_hp, 1)
 
         return current_hp / max_hp
+
     prior_enemy_hp = -1
     enemy_hp = -1
 
@@ -200,16 +201,15 @@ class PokemonBrock(PokemonEnvironment):
         self.prior_enemy_hp = self.enemy_hp
         self.update_enemy_hp()
         if self.enemy_hp < self.prior_enemy_hp:
-            print(f"TO BATTLE WE GO RAHHHHHHHHH: {self.prior_enemy_hp} - {self.enemy_hp} * 50 = {(self.prior_enemy_hp - self.enemy_hp) * 50}")
-            return (self.prior_enemy_hp - self.enemy_hp) * 50
+            print(
+                f"We engaged in mortal kombat: {self.prior_enemy_hp} - {self.enemy_hp} = {((self.prior_enemy_hp - self.enemy_hp) * 10)}")
+            return 10 * (self.prior_enemy_hp - self.enemy_hp)
         return 0
 
     def has_won(self, new_state):
-        if self.enemy_hp == 0 and self.prior_enemy_hp !=0 :
-            joe = 100 * (sum(new_state["levels"]) - sum(self.prior_game_stats["levels"]))
-            print(f"KILLED AN ENEMY: {joe}")
-            enemy_max = self._read_m(0xCFF5)
-            return 100 * enemy_max
+        if self.enemy_hp == 0 and self.prior_enemy_hp != 0:
+            print(f"KILLED AN ENEMY")
+            return 400
         return 0
 
     def _calculate_reward(self, new_state: dict) -> float:
@@ -218,13 +218,14 @@ class PokemonBrock(PokemonEnvironment):
         battle_active = (self._read_m(0xD057) != 0x00)
 
         # exploration rewards:
-        location = new_state.get("location")
-        temp_reward += self.exploration_reward(location, battle_active)
-        temp_reward += self.penalty_walls()
+        if not battle_active:
+            location = new_state.get("location")
+            temp_reward += self.exploration_reward(location)
+            temp_reward += self.penalty_walls()
 
         # battle rewards
         if battle_active:
-            temp_reward += -7  # penalise idle battle state
+            temp_reward += -1  # penalise idle battle state
             temp_reward += self.battle_reward()
         else:
             self.enemy_hp = -1
@@ -233,53 +234,51 @@ class PokemonBrock(PokemonEnvironment):
 
         return temp_reward
 
-    def exploration_reward(self, location, battle_active):
+    def exploration_reward(self, location):
         key = f"{location}"
         reward = 0
 
         # if unseen then reward it and add it
         if key not in self.seen:
             self.seen.append(key)
-            reward+=5
+            reward += 1.5
 
         if self._is_grass_tile():
-            reward += 7
+            reward += 3
         #
-        if key in self.seen and self._is_grass_tile() and not battle_active:  # only penalise staying in the same place if its grass and not battle
+        if key in self.seen and self._is_grass_tile():  # only penalise staying in the same place if its grass and not battle
             reward += -1
 
         if location["map_id"] not in self.visited_coords:
             self.visited_coords.append(location["map_id"])
             bruh = location["map_id"]
             print(f"new location!: {bruh}")
-            if (bruh != 40):
-                return 1000
-
-        # Remove is not grass and the function below it, as it was getting to killin things before this.
-        if self.prior_game_stats["location"]["x"] == location["x"] and self.prior_game_stats["location"]["y"] == \
-                location["y"] and not battle_active:
-            reward += -2
-
-        # if self.prior_game_stats["location"]["x"] == location["x"] and self.prior_game_stats["location"]["y"] == \
-        #         location["y"] and not battle_active and self._is_grass_tile():
-        #     reward += -6
+            if bruh != 40:
+                reward += 100
 
         if self.prior_game_stats["location"]["x"] != location["x"] or self.prior_game_stats["location"]["y"] != \
                 location["y"]:
             reward += -1
 
-        if self.prior_game_stats["location"]["y"] > location["y"] and self.prior_game_stats["location"]["map_id"] == \
-                location["map_id"] and location["map_id"] ==12:
-            reward += 5 * (1/(abs(0-location["y"])+1))
-            print(f"reward is: {reward}")
-            y = self.prior_game_stats["location"]["y"]
-            x = self.prior_game_stats["location"]["x"]
-            print(f"prior location: {x},{y}")
-            print(f"current:{location}")
+        if location["map_id"] == 12:
+            if self.prior_game_stats["location"]["y"] > location["y"] and self.prior_game_stats["location"]["map_id"] == \
+                    location["map_id"]:
 
-        elif self.prior_game_stats["location"]["y"] > location["y"] and self.prior_game_stats["location"]["map_id"] == \
+                reward += (2 +(1 / (abs(0 - location["y"]) + 1)))
+                print("Reward for area 12: ", (2 +(1 / (abs(0 - location["y"]) + 1))))
+
+                y = self.prior_game_stats["location"]["y"]
+                x = self.prior_game_stats["location"]["x"]
+                print(f"prior location: {x},{y}")
+                print(f"current:{location}")
+
+            else:
+                reward += -0.1
+
+        if self.prior_game_stats["location"]["y"] > location["y"] and self.prior_game_stats["location"]["map_id"] == \
                 location["map_id"]:
-            reward+=2 * (1/(abs(0-location["y"])+1))
+            reward += (1+ (1 / (abs(0 - location["y"]) + 1)))
+
         return reward
 
     def _check_if_done(self, game_stats: dict[str, any]) -> bool:
@@ -292,7 +291,7 @@ class PokemonBrock(PokemonEnvironment):
             self.visited_coords.clear()
             self.seen.clear()
             self.enemy_hp = -1
-            self.prior_enemy_hp=-1
+            self.prior_enemy_hp = -1
             self.action = -1
             self.left_wall = -1
             self.right_wall = -1
