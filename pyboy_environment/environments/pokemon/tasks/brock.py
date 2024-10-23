@@ -113,8 +113,8 @@ class PokemonBrock(PokemonEnvironment):
                 game_stats["location"]["x"],
                 game_stats["location"]["y"],
                 game_stats["location"]["map_id"],
-                -1,
-                -1,
+                battle,
+                is_grass,
                 -1,
                 self.action,
 
@@ -165,13 +165,13 @@ class PokemonBrock(PokemonEnvironment):
             return 0
         else:
             if self.left_wall == 0:
-                penalty += -0.01
+                penalty += -0.1
             if self.right_wall == 0:
-                penalty += -0.01
+                penalty += -0.1
             if self.top_wall == 0:
-                penalty += -0.01
+                penalty += -0.1
             if self.bottom_wall == 0:
-                penalty += -0.01
+                penalty += -0.1
         return penalty
 
     def read_enemy_hp_as_fraction(self) -> float:
@@ -238,16 +238,11 @@ class PokemonBrock(PokemonEnvironment):
         key = f"{location}"
         reward = 0
 
-        # if unseen then reward it and add it
-        if key not in self.seen:
-            self.seen.append(key)
-            reward += 1.5
-
-        if self._is_grass_tile():
-            reward += 3
-        #
-        if key in self.seen and self._is_grass_tile():  # only penalise staying in the same place if its grass and not battle
-            reward += -1
+        # if self._is_grass_tile():
+        #     reward += 0.5
+        # #
+        # if key in self.seen and self._is_grass_tile():  # only penalise staying in the same place if its grass and not battle
+        #     reward += -1
 
         if location["map_id"] not in self.visited_coords:
             self.visited_coords.append(location["map_id"])
@@ -260,11 +255,15 @@ class PokemonBrock(PokemonEnvironment):
                 location["y"]:
             reward += -1
 
+        if self.prior_game_stats["location"]["x"] == location["x"] or self.prior_game_stats["location"]["y"] == \
+                location["y"]:
+            reward+= -0.1
+
         if location["map_id"] == 12:
             if self.prior_game_stats["location"]["y"] > location["y"] and self.prior_game_stats["location"]["map_id"] == \
-                    location["map_id"]:
+                    location["map_id"] and key not in self.seen:
 
-                reward += (2 +(1 / (abs(0 - location["y"]) + 1)))
+                reward += (2 +((1 / (abs(0 - location["y"]) + 1))*10))
                 print("Reward for area 12: ", (2 +(1 / (abs(0 - location["y"]) + 1))))
 
                 y = self.prior_game_stats["location"]["y"]
@@ -275,9 +274,14 @@ class PokemonBrock(PokemonEnvironment):
             else:
                 reward += -0.1
 
-        if self.prior_game_stats["location"]["y"] > location["y"] and self.prior_game_stats["location"]["map_id"] == \
-                location["map_id"]:
-            reward += (1+ (1 / (abs(0 - location["y"]) + 1)))
+        elif self.prior_game_stats["location"]["y"] > location["y"] and self.prior_game_stats["location"]["map_id"] == \
+                location["map_id"] and key not in self.seen:
+            reward += (1+ ((1 / (abs(0 - location["y"]) + 1))*10))
+
+        # if unseen then reward it and add it
+        if key not in self.seen:
+            self.seen.append(key)
+            reward += 1.5
 
         return reward
 
