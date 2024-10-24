@@ -82,7 +82,6 @@ class PokemonBrock(PokemonEnvironment):
         self.get_wall_status()
         is_grass = self._is_grass_tile()
         battle = (self._read_m(0xD057) != 0x00)
-
         # ======================================Left Over=====================================
         # game_stats["seen_pokemon"],
         # game_stats["caught_pokemon"],
@@ -93,7 +92,9 @@ class PokemonBrock(PokemonEnvironment):
         # ======================================Left Over=====================================
 
         if battle:  # logic being that when in battle the state vector should not matter, we want it to do a set action
-            state_vector = [
+            map_array = self._get_screen_walkable_matrix()
+            map_array[:] = -1
+            state_vector = np.concatenate((np.array([
                 -1,
                 -1,
                 -1,
@@ -101,15 +102,15 @@ class PokemonBrock(PokemonEnvironment):
                 is_grass,
                 self.read_enemy_hp_as_fraction(),  # normalise it
                 self.action,
+                -1,
+                -1,
+                -1,
+                -1,
 
-                # obstacles?
-                -1,
-                -1,
-                -1,
-                -1,
-            ]
+            ]), map_array.flatten()))
+
         else:  # traversing
-            state_vector = [
+            state_vector = np.concatenate((np.array([
                 game_stats["location"]["x"],
                 game_stats["location"]["y"],
                 game_stats["location"]["map_id"],
@@ -117,15 +118,14 @@ class PokemonBrock(PokemonEnvironment):
                 is_grass,
                 -1,
                 self.action,
-
                 # obstacles?
                 self.top_wall,
                 self.bottom_wall,
                 self.right_wall,
-                self.left_wall
-            ]
+                self.left_wall,
+            ]), self._get_screen_walkable_matrix().flatten()))
 
-        return np.array(state_vector)
+        return state_vector
 
     def get_wall_status(self):
         map_data = self._get_screen_walkable_matrix()
@@ -225,7 +225,7 @@ class PokemonBrock(PokemonEnvironment):
 
         # battle rewards
         if battle_active:
-            temp_reward += -1  # penalise idle battle state
+            #temp_reward += -1  # penalise idle battle state
             temp_reward += self.battle_reward()
         else:
             self.enemy_hp = -1
@@ -236,7 +236,7 @@ class PokemonBrock(PokemonEnvironment):
 
     def exploration_reward(self, location):
         key = f"{location}"
-        reward = 0
+        reward = -1
 
         # if self._is_grass_tile():
         #     reward += 0.5
@@ -251,39 +251,83 @@ class PokemonBrock(PokemonEnvironment):
             if bruh != 40:
                 reward += 100
 
-        if self.prior_game_stats["location"]["x"] != location["x"] or self.prior_game_stats["location"]["y"] != \
-                location["y"]:
-            reward += -1
+        # if self.prior_game_stats["location"]["x"] != location["x"] and self.prior_game_stats["location"]["y"] != \
+        #         location["y"]:
+        #     reward += -1
 
         if self.prior_game_stats["location"]["x"] == location["x"] or self.prior_game_stats["location"]["y"] == \
                 location["y"]:
-            reward+= -0.1
+            reward += 0.01
 
         if location["map_id"] == 12:
             if self.prior_game_stats["location"]["y"] > location["y"] and self.prior_game_stats["location"]["map_id"] == \
                     location["map_id"] and key not in self.seen:
-
-                reward += (2 +((1 / (abs(0 - location["y"]) + 1))*10))
-                print("Reward for area 12: ", (2 +(1 / (abs(0 - location["y"]) + 1))))
+                distance_to_goal = abs(0 - location["y"])
+                reward += 2 + (10 / (distance_to_goal + 1))
+                print("Reward for area 12: ", (2 + (10 / (distance_to_goal + 1))))
 
                 y = self.prior_game_stats["location"]["y"]
                 x = self.prior_game_stats["location"]["x"]
                 print(f"prior location: {x},{y}")
                 print(f"current:{location}")
 
-            else:
-                reward += -0.1
-
         elif self.prior_game_stats["location"]["y"] > location["y"] and self.prior_game_stats["location"]["map_id"] == \
                 location["map_id"] and key not in self.seen:
-            reward += (1+ ((1 / (abs(0 - location["y"]) + 1))*10))
+            distance_to_goal = abs(0 - location["y"])
+            reward += 1 + (10 / (distance_to_goal + 1))
+
 
         # if unseen then reward it and add it
         if key not in self.seen:
             self.seen.append(key)
-            reward += 1.5
+            reward += 1
 
         return reward
+
+
+    # recent_locations=[]
+    # def exploration_reward(self, location):
+    #     key = f"{location}"
+    #     reward = 0
+    #
+    #     # Reward for visiting new locations
+    #     if location["map_id"] not in self.visited_coords:
+    #         self.visited_coords.append(location["map_id"])
+    #         distance_bonus = 1 / (len(self.visited_coords) + 1)
+    #         reward += 100 * distance_bonus
+    #         print(f"New location! Scaled reward: {reward}")
+    #
+    #     # Penalize for revisiting recent locations
+    #     self.recent_locations.append(location)
+    #     if len(self.recent_locations) > 5:
+    #         self.recent_locations.pop(0)
+    #
+    #     if location in self.recent_locations:
+    #         reward -= 5
+    #         print("Penalized for revisiting recent location.")
+    #
+    #     # Reward for moving toward the goal in map_id 12
+    #     if location["map_id"] == 12:
+    #         if self.prior_game_stats["location"]["y"] > location["y"]:
+    #             distance_to_goal = abs(0 - location["y"])
+    #             reward += 2 + (10 / (distance_to_goal + 1))
+    #             print(f"Reward for moving toward goal in map 12: {reward}")
+    #
+    #     # Gradient reward for progression toward a general target
+    #     target_y, target_x = 0, 0  # Example target
+    #     distance_to_target = abs(target_y - location["y"]) + abs(target_x - location["x"])
+    #     reward += 10 / (distance_to_target + 1)
+    #     print(f"Reward for progression toward target: {reward}")
+    #
+    #     # Small reward for visiting an unseen location
+    #     if key not in self.seen:
+    #         self.seen.append(key)
+    #         reward += 1
+    #
+    #     # Clip the reward to prevent instability
+    #     reward = np.clip(reward, -10, 10)
+    #
+    #     return reward
 
     def _check_if_done(self, game_stats: dict[str, any]) -> bool:
         # Setting done to true if agent beats first gym (temporary)
@@ -297,9 +341,10 @@ class PokemonBrock(PokemonEnvironment):
             self.enemy_hp = -1
             self.prior_enemy_hp = -1
             self.action = -1
-            self.left_wall = -1
-            self.right_wall = -1
-            self.top_wall = -1
-            self.bottom_wall = -1
+            self.left_wall = 0
+            self.right_wall = 0
+            self.top_wall = 0
+            self.bottom_wall = 0
+            #self.recent_locations.clear()
             return True
         return False
